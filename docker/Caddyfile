@@ -1,0 +1,49 @@
+{
+    email {$ACME_EMAIL:admin@example.com}
+    admin off
+}
+
+{$DOMAIN:counter.example.com} {
+    encode zstd gzip
+
+    header {
+        # Strict Transport Security
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # X-Content-Type-Options
+        X-Content-Type-Options "nosniff"
+        # X-Frame-Options
+        X-Frame-Options "DENY"
+        # Referrer-Policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Permissions-Policy
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+        # Content-Security-Policy
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';"
+        # Remove server header for fingerprint minimization
+        -Server
+    }
+
+    # Request body limit (10MB maximum for file uploads, default 1MB for APIs)
+    request_body {
+        max_size 10MB
+    }
+
+    # Reverse proxy to the ASP.NET Core API service container
+    reverse_proxy api:8080 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        
+        # Buffer requests and responses for optimal throughput
+        flush_interval -1
+    }
+
+    # Health check bypass logging
+    @health path /health /health/*
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}

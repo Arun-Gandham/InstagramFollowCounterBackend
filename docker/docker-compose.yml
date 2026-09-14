@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: counter-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-follower_counter_db}
+      POSTGRES_USER: ${POSTGRES_USER:-counter_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-SecurePostgresDbPassword123!}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-counter_user} -d ${POSTGRES_DB:-follower_counter_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal-net
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: api
+    container_name: counter-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-follower_counter_db};Username=${POSTGRES_USER:-counter_user};Password=${POSTGRES_PASSWORD:-SecurePostgresDbPassword123!};
+      - Security__TokenEncryptionKeyHex=${TOKEN_ENCRYPTION_KEY_HEX}
+      - MetaOAuth__ClientId=${META_APP_ID}
+      - MetaOAuth__ClientSecret=${META_APP_SECRET}
+      - MetaOAuth__RedirectUri=${META_REDIRECT_URI}
+      - AdminSeed__Email=${ADMIN_SEED_EMAIL:-admin@counter.local}
+      - AdminSeed__Password=${ADMIN_SEED_PASSWORD:-AdminPass123!}
+      - AdminSeed__DisplayName=${ADMIN_SEED_DISPLAY_NAME:-Platform Administrator}
+      - SeedAdminOnStartup=${SEED_ADMIN_ON_STARTUP:-true}
+      - Email__FrontendUrl=${FRONTEND_URL:-https://counter.example.com}
+    networks:
+      - internal-net
+    expose:
+      - "8080"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: worker
+    container_name: counter-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      - DOTNET_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-follower_counter_db};Username=${POSTGRES_USER:-counter_user};Password=${POSTGRES_PASSWORD:-SecurePostgresDbPassword123!};
+      - Security__TokenEncryptionKeyHex=${TOKEN_ENCRYPTION_KEY_HEX}
+      - MetaOAuth__ClientId=${META_APP_ID}
+      - MetaOAuth__ClientSecret=${META_APP_SECRET}
+    networks:
+      - internal-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: counter-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      - DOMAIN=${DOMAIN:-counter.example.com}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks:
+      - internal-net
+
+volumes:
+  postgres_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  internal-net:
+    driver: bridge
