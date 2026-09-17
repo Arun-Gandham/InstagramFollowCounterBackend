@@ -7,12 +7,14 @@ public class Device
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string SerialNumber { get; set; } = string.Empty;
+    public string? Nickname { get; set; }
     public Guid? OwnerUserId { get; set; }
     public AppUser? OwnerUser { get; set; }
 
     public DeviceStatus Status { get; set; } = DeviceStatus.Unclaimed;
     public string CredentialHash { get; set; } = string.Empty;
     public string? FirmwareVersion { get; set; }
+    public int DigitCount { get; set; } = 7;
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ClaimedAt { get; set; }

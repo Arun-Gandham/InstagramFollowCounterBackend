@@ -17,6 +17,7 @@ public record AdminUserDto(
 public record AdminDeviceDto(
     Guid Id,
     string SerialNumber,
+    int DigitCount,
     DeviceStatus Status,
     string? FirmwareVersion,
     Guid? OwnerUserId,
@@ -27,12 +28,19 @@ public record AdminDeviceDto(
 );
 
 public record CreateDeviceRequestDto(
-    string SerialNumber
+    string SerialNumber,
+    int DigitCount = 7
+);
+
+public record UpdateDeviceRequestDto(
+    int? DigitCount,
+    string? SerialNumber
 );
 
 public record CreateDeviceResponseDto(
     Guid DeviceId,
     string SerialNumber,
+    int DigitCount,
     string PlaintextDeviceSecret,
     string PlaintextClaimCode,
     DateTimeOffset ClaimExpiresAt

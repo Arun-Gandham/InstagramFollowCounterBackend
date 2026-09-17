@@ -23,6 +23,8 @@ public record DeviceLinkedInstagramDto(
 public record DeviceDto(
     Guid Id,
     string SerialNumber,
+    string? Nickname,
+    int DigitCount,
     DeviceStatus Status,
     string? FirmwareVersion,
     DateTimeOffset? LastSeenAt,
@@ -33,6 +35,7 @@ public record DeviceDto(
 
 public record DeviceStateResponseDto(
     string DeviceId,
+    int DigitCount,
     bool Configured,
     bool InstagramConnected,
     string? Username,
@@ -56,4 +59,8 @@ public record DeviceHeartbeatRequestDto(
 public record DeviceHeartbeatResponseDto(
     bool Acknowledged,
     DateTimeOffset ServerTime
+);
+
+public record UpdateDeviceNicknameDto(
+    string? Nickname
 );

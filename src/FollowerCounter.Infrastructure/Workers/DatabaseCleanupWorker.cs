@@ -38,6 +38,8 @@ public class DatabaseCleanupWorker : BackgroundService
             try
             {
                 await PerformCleanupAsync(stoppingToken);
+                var delayHours = Math.Max(1, _options.CleanupIntervalHours);
+                await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -45,11 +47,16 @@ public class DatabaseCleanupWorker : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred during database cleanup job.");
+                _logger.LogError(ex, "Error occurred during database cleanup job execution.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-
-            var delayHours = Math.Max(1, _options.CleanupIntervalHours);
-            await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
         }
 
         _logger.LogInformation("DatabaseCleanupWorker stopped.");

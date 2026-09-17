@@ -42,6 +42,8 @@ public class InstagramTokenRefreshWorker : BackgroundService
             try
             {
                 await RefreshExpiringTokensAsync(stoppingToken);
+                var delayHours = Math.Max(1, _options.TokenRefreshCheckIntervalHours);
+                await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -50,10 +52,15 @@ public class InstagramTokenRefreshWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred during token refresh job execution.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken); // delay before retry on error
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-
-            var delayHours = Math.Max(1, _options.TokenRefreshCheckIntervalHours);
-            await Task.Delay(TimeSpan.FromHours(delayHours), stoppingToken);
         }
 
         _logger.LogInformation("InstagramTokenRefreshWorker stopped.");

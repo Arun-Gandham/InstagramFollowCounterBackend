@@ -76,17 +76,31 @@ public class MetaInstagramProvider : IInstagramProvider
             throw new DomainException("Meta returned an invalid or empty access token response.");
         }
 
-        // Immediately exchange short-lived token for long-lived token (60-day validity)
-        var longLived = await ExchangeForLongLivedTokenAsync(shortLived.AccessToken, cancellationToken);
+        // Attempt to exchange short-lived token for long-lived token (60-day validity)
+        string finalToken = shortLived.AccessToken;
+        long expiresIn = 3600; // Default short-lived token validity is 1 hour
+        string tokenType = "bearer";
+
+        try
+        {
+            var longLived = await ExchangeForLongLivedTokenAsync(shortLived.AccessToken, cancellationToken);
+            finalToken = longLived.AccessToken!;
+            tokenType = longLived.TokenType ?? "bearer";
+            expiresIn = longLived.ExpiresInSeconds > 0 ? longLived.ExpiresInSeconds : 60 * 24 * 3600; // fallback to 60 days
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to exchange short-lived token for long-lived token. Falling back to short-lived token.");
+        }
 
         var userIdString = shortLived.UserId?.ToString() ?? string.Empty;
         var scopes = shortLived.Permissions != null ? string.Join(",", shortLived.Permissions) : "instagram_business_basic";
 
         return new InstagramTokenResult(
-            AccessToken: longLived.AccessToken!,
-            TokenType: longLived.TokenType ?? "bearer",
+            AccessToken: finalToken,
+            TokenType: tokenType,
             IssuedAt: DateTimeOffset.UtcNow,
-            ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(longLived.ExpiresInSeconds),
+            ExpiresAt: DateTimeOffset.UtcNow.AddSeconds(expiresIn),
             InstagramUserId: userIdString,
             Scopes: scopes
         );
@@ -94,7 +108,7 @@ public class MetaInstagramProvider : IInstagramProvider
 
     private async Task<MetaLongLivedTokenResponse> ExchangeForLongLivedTokenAsync(string shortLivedToken, CancellationToken cancellationToken)
     {
-        var exchangeUrl = $"{_options.GraphBaseUrl}/access_token" +
+        var exchangeUrl = $"{_options.GraphBaseUrl}/{_options.ApiVersion}/access_token" +
                           $"?grant_type=ig_exchange_token" +
                           $"&client_secret={Uri.EscapeDataString(_options.ClientSecret)}" +
                           $"&access_token={Uri.EscapeDataString(shortLivedToken)}";
@@ -119,7 +133,7 @@ public class MetaInstagramProvider : IInstagramProvider
 
     public async Task<InstagramTokenResult?> RefreshAccessTokenAsync(string currentAccessToken, CancellationToken cancellationToken = default)
     {
-        var refreshUrl = $"{_options.GraphBaseUrl}/refresh_access_token" +
+        var refreshUrl = $"{_options.GraphBaseUrl}/{_options.ApiVersion}/refresh_access_token" +
                          $"?grant_type=ig_refresh_token" +
                          $"&access_token={Uri.EscapeDataString(currentAccessToken)}";
 

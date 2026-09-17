@@ -115,6 +115,8 @@ public class DeviceService : IDeviceService
             return new DeviceDto(
                 Id: d.Id,
                 SerialNumber: d.SerialNumber,
+                Nickname: d.Nickname,
+                DigitCount: d.DigitCount,
                 Status: d.Status,
                 FirmwareVersion: d.FirmwareVersion,
                 LastSeenAt: d.LastSeenAt,
@@ -189,5 +191,48 @@ public class DeviceService : IDeviceService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         await _auditLogService.LogAsync("DeviceUnboundFromInstagram", "Success", userId, deviceId: device.Id, ipAddress: ipAddress, cancellationToken: cancellationToken);
+    }
+
+    public async Task<DeviceDto> UpdateDeviceNicknameAsync(Guid userId, Guid deviceId, string? nickname, CancellationToken cancellationToken = default)
+    {
+        var device = await _dbContext.Devices
+            .Include(d => d.InstagramBindings)
+            .ThenInclude(b => b.InstagramAccount)
+            .FirstOrDefaultAsync(d => d.Id == deviceId && d.OwnerUserId == userId, cancellationToken);
+
+        if (device == null)
+        {
+            throw new NotFoundException(nameof(Device), deviceId);
+        }
+
+        device.Nickname = nickname;
+        device.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var activeBinding = device.InstagramBindings.FirstOrDefault(b => b.Active);
+        DeviceLinkedInstagramDto? linkedIg = null;
+        if (activeBinding?.InstagramAccount != null)
+        {
+            linkedIg = new DeviceLinkedInstagramDto(
+                activeBinding.InstagramAccount.Id,
+                activeBinding.InstagramAccount.Username,
+                activeBinding.InstagramAccount.FollowerCount,
+                activeBinding.InstagramAccount.ConnectionStatus
+            );
+        }
+
+        return new DeviceDto(
+            Id: device.Id,
+            SerialNumber: device.SerialNumber,
+            Nickname: device.Nickname,
+            DigitCount: device.DigitCount,
+            Status: device.Status,
+            FirmwareVersion: device.FirmwareVersion,
+            LastSeenAt: device.LastSeenAt,
+            ClaimedAt: device.ClaimedAt,
+            CreatedAt: device.CreatedAt,
+            LinkedInstagramAccount: linkedIg
+        );
     }
 }

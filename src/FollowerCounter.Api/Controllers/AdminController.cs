@@ -29,11 +29,28 @@ public class AdminController : ControllerBase
     }
 
     [HttpGet("devices")]
-    [ProducesResponseType(typeof(IReadOnlyList<AdminDeviceDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetDevices([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetDevices(
+        [FromQuery] int page = 1, 
+        [FromQuery] int pageSize = 50, 
+        [FromQuery] string? search = null, 
+        [FromQuery] FollowerCounter.Domain.Enums.DeviceStatus? status = null, 
+        CancellationToken cancellationToken = default)
     {
-        var devices = await _adminService.GetDevicesAsync(page, pageSize, cancellationToken);
+        var devices = await _adminService.GetDevicesAsync(page, pageSize, search, status, cancellationToken);
         return Ok(devices);
+    }
+
+    [HttpPost("devices/factory-seed")]
+    public async Task<IActionResult> SeedDevices([FromQuery] int count = 100, CancellationToken cancellationToken = default)
+    {
+        var devices = new List<CreateDeviceResponseDto>();
+        for (int i = 0; i < count; i++)
+        {
+            var req = new CreateDeviceRequestDto($"FC-FACTORY-{Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper()}", 7);
+            var res = await _adminService.CreateDeviceAsync(req, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            devices.Add(res);
+        }
+        return Ok(new { Message = $"Seeded {count} devices successfully." });
     }
 
     [HttpPost("devices")]
@@ -43,6 +60,15 @@ public class AdminController : ControllerBase
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
         var response = await _adminService.CreateDeviceAsync(request, ip, cancellationToken);
         return StatusCode(StatusCodes.Status201Created, response);
+    }
+
+    [HttpPatch("devices/{deviceId:guid}")]
+    [ProducesResponseType(typeof(AdminDeviceDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateDevice([FromRoute] Guid deviceId, [FromBody] UpdateDeviceRequestDto request, CancellationToken cancellationToken)
+    {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var updated = await _adminService.UpdateDeviceAsync(deviceId, request, ip, cancellationToken);
+        return Ok(updated);
     }
 
     [HttpPost("devices/{deviceId:guid}/disable")]

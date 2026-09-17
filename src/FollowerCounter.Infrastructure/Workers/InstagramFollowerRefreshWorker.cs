@@ -44,6 +44,11 @@ public class InstagramFollowerRefreshWorker : BackgroundService
             try
             {
                 await ProcessFollowerRefreshBatchAsync(stoppingToken);
+
+                // Configurable delay with jitter (e.g., 30s ± 3s)
+                var jitterSeconds = Random.Shared.Next(-3, 4);
+                var delaySeconds = Math.Max(10, _options.FollowerRefreshIntervalSeconds + jitterSeconds);
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -52,12 +57,15 @@ public class InstagramFollowerRefreshWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Unexpected error in follower refresh worker loop.");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
             }
-
-            // Configurable delay with jitter (e.g., 30s ± 3s)
-            var jitterSeconds = Random.Shared.Next(-3, 4);
-            var delaySeconds = Math.Max(10, _options.FollowerRefreshIntervalSeconds + jitterSeconds);
-            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
         }
 
         _logger.LogInformation("InstagramFollowerRefreshWorker [{WorkerId}] stopped.", _workerId);

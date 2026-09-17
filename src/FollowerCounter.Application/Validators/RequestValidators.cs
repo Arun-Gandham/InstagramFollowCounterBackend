@@ -102,5 +102,25 @@ public class CreateDeviceRequestValidator : AbstractValidator<CreateDeviceReques
         RuleFor(x => x.SerialNumber)
             .NotEmpty().WithMessage("Serial number is required.")
             .Matches(@"^[A-Za-z0-9\-_]{4,50}$").WithMessage("Serial number must be alphanumeric between 4 and 50 characters.");
+
+        RuleFor(x => x.DigitCount)
+            .Must(d => d == 5 || d == 7)
+            .WithMessage("Digit count must be either 5 or 7.");
     }
 }
+
+public class UpdateDeviceRequestValidator : AbstractValidator<UpdateDeviceRequestDto>
+{
+    public UpdateDeviceRequestValidator()
+    {
+        RuleFor(x => x.DigitCount)
+            .Must(d => !d.HasValue || d.Value == 5 || d.Value == 7)
+            .WithMessage("Digit count must be either 5 or 7.");
+
+        RuleFor(x => x.SerialNumber)
+            .Matches(@"^[A-Za-z0-9\-_]{4,50}$")
+            .When(x => !string.IsNullOrEmpty(x.SerialNumber))
+            .WithMessage("Serial number must be alphanumeric between 4 and 50 characters.");
+    }
+}
+

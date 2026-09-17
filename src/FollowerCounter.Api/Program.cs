@@ -48,17 +48,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.ExpireTimeSpan = TimeSpan.FromDays(30);
     options.SlidingExpiration = true;
 
-    if (builder.Environment.IsDevelopment())
-    {
-        // Support cross-origin local development (e.g. http://localhost:4200 calling https://localhost:7149)
-        options.Cookie.SameSite = SameSiteMode.None;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    }
-    else
-    {
-        options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-    }
+    // Support cross-origin API calls (e.g. localhost frontend to production backend)
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     options.Events.OnRedirectToLogin = ctx =>
     {
         ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -75,6 +67,8 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAntiforgery(options =>
 {
     options.HeaderName = "X-CSRF-TOKEN";
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 
 // 5. Rate Limiting Policies
@@ -159,38 +153,12 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("DefaultCors", policy =>
     {
-        if (builder.Environment.IsDevelopment())
-        {
-            // In Development, allow any localhost / 127.0.0.1 origin dynamically with credentials
-            policy.SetIsOriginAllowed(origin =>
-                  {
-                      if (string.IsNullOrEmpty(origin)) return false;
-                      try
-                      {
-                          var uri = new Uri(origin);
-                          return uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                                 uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase);
-                      }
-                      catch
-                      {
-                          return false;
-                      }
-                  })
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
-        }
-        else if (allowedOrigins.Length > 0)
-        {
-            policy.WithOrigins(allowedOrigins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
-        }
-        else
-        {
-            policy.SetIsOriginAllowed(_ => false);
-        }
+        // Allow configured origins securely with credentials
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials()
+              .WithExposedHeaders("Content-Disposition");
     });
 });
 

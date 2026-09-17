@@ -24,6 +24,17 @@ public static class DbInitializer
             var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<AppRole>>();
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AppUser>>();
 
+            // 0. Ensure Database Schema has DigitCount Column
+            try
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(
+                    "ALTER TABLE \"Devices\" ADD COLUMN IF NOT EXISTS \"DigitCount\" integer NOT NULL DEFAULT 7;");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Schema check for DigitCount column skipped or already applied.");
+            }
+
             // 1. Ensure all Roles exist and have all granular permissions attached
             foreach (var roleName in AppRoles.All)
             {
@@ -220,6 +231,7 @@ public static class DbInitializer
                             SerialNumber = sampleSerial,
                             Status = DeviceStatus.Unclaimed,
                             CredentialHash = CryptoHelper.ComputeSha256Hash(sampleSecret),
+                            DigitCount = 7,
                             CreatedAt = DateTimeOffset.UtcNow,
                             UpdatedAt = DateTimeOffset.UtcNow
                         };

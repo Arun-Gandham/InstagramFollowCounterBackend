@@ -11,4 +11,6 @@ public interface IDeviceService
     Task BindInstagramAccountAsync(Guid userId, Guid deviceId, Guid instagramAccountId, string? ipAddress, CancellationToken cancellationToken = default);
 
     Task UnbindInstagramAccountAsync(Guid userId, Guid deviceId, string? ipAddress, CancellationToken cancellationToken = default);
+
+    Task<DeviceDto> UpdateDeviceNicknameAsync(Guid userId, Guid deviceId, string? nickname, CancellationToken cancellationToken = default);
 }

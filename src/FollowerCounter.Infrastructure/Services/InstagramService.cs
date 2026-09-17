@@ -7,6 +7,7 @@ using FollowerCounter.Domain.Exceptions;
 using FollowerCounter.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace FollowerCounter.Infrastructure.Services;
 
@@ -18,6 +19,7 @@ public class InstagramService : IInstagramService
     private readonly IAuditLogService _auditLogService;
     private readonly ISecurityEventService _securityEventService;
     private readonly ILogger<InstagramService> _logger;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
     public InstagramService(
         IAppDbContext dbContext,
@@ -25,7 +27,8 @@ public class InstagramService : IInstagramService
         ISecretProtector _secretProtector,
         IAuditLogService auditLogService,
         ISecurityEventService securityEventService,
-        ILogger<InstagramService> logger)
+        ILogger<InstagramService> logger,
+        Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
         _dbContext = dbContext;
         _instagramProvider = instagramProvider;
@@ -33,6 +36,7 @@ public class InstagramService : IInstagramService
         _auditLogService = auditLogService;
         _securityEventService = securityEventService;
         _logger = logger;
+        _configuration = configuration;
     }
 
     public async Task<InstagramConnectResponseDto> InitiateConnectAsync(Guid userId, string? redirectAfterSuccess, string? ipAddress, CancellationToken cancellationToken = default)
@@ -170,9 +174,30 @@ public class InstagramService : IInstagramService
 
         await _auditLogService.LogAsync("InstagramConnected", "Success", session.UserId, ipAddress: ipAddress, metadata: new { account.InstagramUserId, account.Username }, cancellationToken: cancellationToken);
 
-        var redirectTarget = !string.IsNullOrWhiteSpace(session.RedirectAfterSuccess)
-            ? session.RedirectAfterSuccess
-            : "/instagram/connected?status=success";
+        var clientBaseUrl = _configuration.GetValue<string>("ClientApp:BaseUrl")?.TrimEnd('/') ?? "http://localhost:4200";
+
+        var requestedRedirect = session.RedirectAfterSuccess;
+        string redirectTarget;
+
+        if (string.IsNullOrWhiteSpace(requestedRedirect))
+        {
+            redirectTarget = $"{clientBaseUrl}/dashboard?ig_connected=true";
+        }
+        else if (requestedRedirect.StartsWith('/'))
+        {
+            // Relative path
+            redirectTarget = $"{clientBaseUrl}{requestedRedirect}";
+        }
+        else if (requestedRedirect.StartsWith(clientBaseUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            // Full URL matching the allowed base
+            redirectTarget = requestedRedirect;
+        }
+        else
+        {
+            // Invalid or external domain, fallback to safe default
+            redirectTarget = $"{clientBaseUrl}/dashboard?ig_connected=true";
+        }
 
         return redirectTarget;
     }

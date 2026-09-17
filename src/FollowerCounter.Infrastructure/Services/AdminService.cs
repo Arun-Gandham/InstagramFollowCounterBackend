@@ -1,6 +1,7 @@
 using FluentValidation;
 using FollowerCounter.Application.Common.Interfaces;
 using FollowerCounter.Application.DTOs.Admin;
+using FollowerCounter.Application.DTOs.Common;
 using FollowerCounter.Application.Exceptions;
 using FollowerCounter.Domain.Entities;
 using FollowerCounter.Domain.Enums;
@@ -33,8 +34,10 @@ public class AdminService : IAdminService
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<AdminUserDto>> GetUsersAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    public async Task<PagedResultDto<AdminUserDto>> GetUsersAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
     {
+        var totalCount = await _dbContext.Users.CountAsync(cancellationToken);
+
         var users = await _dbContext.Users
             .Include(u => u.Devices)
             .Include(u => u.InstagramAccounts)
@@ -43,7 +46,7 @@ public class AdminService : IAdminService
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        return users.Select(u => new AdminUserDto(
+        var items = users.Select(u => new AdminUserDto(
             Id: u.Id,
             Email: u.Email!,
             DisplayName: u.DisplayName,
@@ -54,20 +57,42 @@ public class AdminService : IAdminService
             DeviceCount: u.Devices.Count,
             InstagramAccountCount: u.InstagramAccounts.Count
         )).ToList();
+
+        return new PagedResultDto<AdminUserDto>(items, totalCount, page, pageSize);
     }
 
-    public async Task<IReadOnlyList<AdminDeviceDto>> GetDevicesAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+    public async Task<PagedResultDto<AdminDeviceDto>> GetDevicesAsync(int page = 1, int pageSize = 50, string? search = null, DeviceStatus? status = null, CancellationToken cancellationToken = default)
     {
-        var devices = await _dbContext.Devices
+        var query = _dbContext.Devices.AsQueryable();
+
+        if (status.HasValue)
+        {
+            query = query.Where(d => d.Status == status.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            search = search.Trim().ToLower();
+            query = query.Where(d => 
+                d.SerialNumber.ToLower().Contains(search) || 
+                d.Id.ToString().Contains(search) ||
+                (d.OwnerUser != null && d.OwnerUser.Email.ToLower().Contains(search))
+            );
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var devices = await query
             .Include(d => d.OwnerUser)
             .OrderByDescending(d => d.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        return devices.Select(d => new AdminDeviceDto(
+        var items = devices.Select(d => new AdminDeviceDto(
             Id: d.Id,
             SerialNumber: d.SerialNumber,
+            DigitCount: d.DigitCount,
             Status: d.Status,
             FirmwareVersion: d.FirmwareVersion,
             OwnerUserId: d.OwnerUserId,
@@ -76,6 +101,8 @@ public class AdminService : IAdminService
             ClaimedAt: d.ClaimedAt,
             LastSeenAt: d.LastSeenAt
         )).ToList();
+
+        return new PagedResultDto<AdminDeviceDto>(items, totalCount, page, pageSize);
     }
 
     public async Task<CreateDeviceResponseDto> CreateDeviceAsync(CreateDeviceRequestDto request, string? ipAddress, CancellationToken cancellationToken = default)
@@ -101,6 +128,7 @@ public class AdminService : IAdminService
         {
             Id = Guid.NewGuid(),
             SerialNumber = request.SerialNumber.Trim(),
+            DigitCount = request.DigitCount == 5 ? 5 : 7,
             Status = DeviceStatus.Unclaimed,
             CredentialHash = credentialHash,
             CreatedAt = now,
@@ -120,14 +148,71 @@ public class AdminService : IAdminService
         _dbContext.DeviceClaims.Add(claim);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        await _auditLogService.LogAsync("DeviceProvisioned", "Success", deviceId: device.Id, ipAddress: ipAddress, metadata: new { device.SerialNumber }, cancellationToken: cancellationToken);
+        await _auditLogService.LogAsync("DeviceProvisioned", "Success", deviceId: device.Id, ipAddress: ipAddress, metadata: new { device.SerialNumber, device.DigitCount }, cancellationToken: cancellationToken);
 
         return new CreateDeviceResponseDto(
             DeviceId: device.Id,
             SerialNumber: device.SerialNumber,
+            DigitCount: device.DigitCount,
             PlaintextDeviceSecret: plaintextDeviceSecret,
             PlaintextClaimCode: plaintextClaimCode,
             ClaimExpiresAt: claimExpiresAt
+        );
+    }
+
+    public async Task<AdminDeviceDto> UpdateDeviceAsync(Guid deviceId, UpdateDeviceRequestDto request, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var device = await _dbContext.Devices
+            .Include(d => d.OwnerUser)
+            .FirstOrDefaultAsync(d => d.Id == deviceId, cancellationToken);
+
+        if (device == null)
+        {
+            throw new NotFoundException(nameof(Device), deviceId);
+        }
+
+        if (request.DigitCount.HasValue)
+        {
+            device.DigitCount = request.DigitCount.Value == 5 ? 5 : 7;
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SerialNumber))
+        {
+            var trimmedSerial = request.SerialNumber.Trim();
+            if (trimmedSerial != device.SerialNumber)
+            {
+                var exists = await _dbContext.Devices.AnyAsync(d => d.SerialNumber == trimmedSerial && d.Id != deviceId, cancellationToken);
+                if (exists)
+                {
+                    throw new ConflictException($"Device with serial number '{trimmedSerial}' already exists.");
+                }
+                device.SerialNumber = trimmedSerial;
+            }
+        }
+
+        device.UpdatedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _auditLogService.LogAsync(
+            "DeviceUpdated",
+            "Success",
+            deviceId: deviceId,
+            ipAddress: ipAddress,
+            metadata: new { device.SerialNumber, device.DigitCount },
+            cancellationToken: cancellationToken
+        );
+
+        return new AdminDeviceDto(
+            Id: device.Id,
+            SerialNumber: device.SerialNumber,
+            DigitCount: device.DigitCount,
+            Status: device.Status,
+            FirmwareVersion: device.FirmwareVersion,
+            OwnerUserId: device.OwnerUserId,
+            OwnerEmail: device.OwnerUser?.Email,
+            CreatedAt: device.CreatedAt,
+            ClaimedAt: device.ClaimedAt,
+            LastSeenAt: device.LastSeenAt
         );
     }
 

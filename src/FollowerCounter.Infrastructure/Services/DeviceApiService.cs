@@ -83,6 +83,7 @@ public class DeviceApiService : IDeviceApiService
 
         return new DeviceStateResponseDto(
             DeviceId: device.SerialNumber,
+            DigitCount: device.DigitCount,
             Configured: configured,
             InstagramConnected: instagramConnected,
             Username: username,

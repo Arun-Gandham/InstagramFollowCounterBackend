@@ -80,4 +80,18 @@ public class DeviceManagementController : ControllerBase
         await _deviceService.UnbindInstagramAccountAsync(_currentUserService.UserId.Value, deviceId, ip, cancellationToken);
         return Ok(new { message = "Device unlinked from Instagram." });
     }
+
+    [HttpPatch("{deviceId:guid}/nickname")]
+    [ProducesResponseType(typeof(DeviceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateNickname([FromRoute] Guid deviceId, [FromBody] UpdateDeviceNicknameDto request, CancellationToken cancellationToken)
+    {
+        if (!_currentUserService.UserId.HasValue)
+        {
+            return Unauthorized();
+        }
+
+        var device = await _deviceService.UpdateDeviceNicknameAsync(_currentUserService.UserId.Value, deviceId, request.Nickname, cancellationToken);
+        return Ok(device);
+    }
 }

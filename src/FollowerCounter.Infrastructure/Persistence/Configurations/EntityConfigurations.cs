@@ -84,6 +84,7 @@ public class DeviceConfiguration : IEntityTypeConfiguration<Device>
         builder.Property(d => d.Status).HasConversion<string>().HasMaxLength(50).IsRequired();
         builder.Property(d => d.CredentialHash).HasMaxLength(64).IsRequired();
         builder.Property(d => d.FirmwareVersion).HasMaxLength(50);
+        builder.Property(d => d.DigitCount).HasDefaultValue(7).IsRequired();
 
         builder.HasIndex(d => d.SerialNumber).IsUnique();
         builder.HasIndex(d => d.OwnerUserId);
